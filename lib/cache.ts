@@ -38,6 +38,10 @@ export function getCacheKey(
     tracks?: string[]
     weights?: Record<string, number>
     hasTemplate?: boolean
+    templateFingerprint?: string
+    templateContext?: string
+    description?: string
+    userId?: string
     evaluationType?: 'personal' | 'hackathon'
   }
 ): string {
@@ -70,6 +74,12 @@ export function getCacheKey(
     if (context.hasTemplate) {
       key += `:tpl`
     }
+
+    for (const value of [context.templateFingerprint, context.templateContext, context.description, context.userId]) {
+      if (value) {
+        key += `:c${createHash('sha256').update(value).digest('hex').substring(0, 12)}`
+      }
+    }
   }
   
   return key
@@ -83,6 +93,10 @@ export async function getCachedEvaluation(
     tracks?: string[]
     weights?: Record<string, number>
     hasTemplate?: boolean
+    templateFingerprint?: string
+    templateContext?: string
+    description?: string
+    userId?: string
     evaluationType?: 'personal' | 'hackathon'
   }
 ): Promise<CachedEvaluation | null> {
@@ -122,6 +136,10 @@ export async function setCachedEvaluation(
     tracks?: string[]
     weights?: Record<string, number>
     hasTemplate?: boolean
+    templateFingerprint?: string
+    templateContext?: string
+    description?: string
+    userId?: string
     evaluationType?: 'personal' | 'hackathon'
   }
 ): Promise<void> {

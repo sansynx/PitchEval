@@ -2,8 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import dbConnect from '@/lib/mongodb'
 import { checkRedisHealth } from '@/lib/redis'
 import { checkQueueHealth } from '@/lib/queue'
+import { auth } from '@clerk/nextjs/server'
+import { isAuthorizedOperator } from '@/lib/security'
 
 export async function GET(request: NextRequest) {
+  const { sessionClaims } = await auth()
+  if (!isAuthorizedOperator(request, sessionClaims)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const healthCheck = {
     timestamp: new Date().toISOString(),
     environment: process.env.VERCEL ? 'vercel' : 'local',

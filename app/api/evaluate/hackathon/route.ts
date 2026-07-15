@@ -7,6 +7,7 @@ import TemplateAnalysis from '../../../../lib/models/TemplateAnalysis'
 import { addToQueue, QUEUES, HackathonEvaluationJob } from '../../../../lib/queue'
 import { analyzeTemplateStructure } from '../../../../lib/ai/templateAnalysis'
 import { v4 as uuidv4 } from 'uuid'
+import { getInternalAppOrigin, hasValidWeights, isValidPdfUpload, isWithinRateLimit, MAX_HACKATHON_FILES } from '../../../../lib/security'
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,13 +17,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    if (!isWithinRateLimit(`hackathon-evaluation:${userId}`, 2, 10 * 60_000)) {
+      return NextResponse.json({ error: 'Too many bulk evaluation requests. Please wait before starting another batch.' }, { status: 429 })
+    }
+
     await dbConnect()
 
     const formData = await request.formData()
-    const hackathonName = formData.get('hackathonName') as string
-    const tracks = formData.get('tracks') as string
-    const additionalInfo = formData.get('additionalInfo') as string
-    const weights = JSON.parse(formData.get('weights') as string)
+    const hackathonName = (formData.get('hackathonName') as string | null) ?? ''
+    const tracks = (formData.get('tracks') as string | null) ?? ''
+    const additionalInfo = (formData.get('additionalInfo') as string | null) ?? ''
+    let weights: unknown
+    try {
+      weights = JSON.parse(formData.get('weights') as string)
+    } catch {
+      return NextResponse.json({ error: 'Invalid scoring weights' }, { status: 400 })
+    }
 
     
     // Handle template upload
@@ -31,8 +41,20 @@ export async function POST(request: NextRequest) {
     
     const files = formData.getAll('files') as File[]
 
-    if (!hackathonName || files.length === 0) {
+    if (!hackathonName.trim() || hackathonName.length > 120 || tracks.length > 1000 || additionalInfo.length > 2000 || files.length === 0 || files.length > MAX_HACKATHON_FILES || !hasValidWeights(weights)) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    if (!(await Promise.all(files.map(file => isValidPdfUpload(file)))).every(Boolean)) {
+      return NextResponse.json({ error: 'Every submission must be a valid PDF smaller than 10MB' }, { status: 400 })
+    }
+
+    if (templateFile && !await isValidPdfUpload(templateFile)) {
+      return NextResponse.json({ error: 'The template must be a valid PDF smaller than 10MB' }, { status: 400 })
+    }
+
+    if (templateAnalysisData && templateAnalysisData.length > 50_000) {
+      return NextResponse.json({ error: 'Template analysis payload is too large' }, { status: 400 })
     }
 
     // Process template if provided
@@ -110,6 +132,8 @@ export async function POST(request: NextRequest) {
 
     // Generate batch ID for tracking
     const batchId = uuidv4()
+    const internalOrigin = getInternalAppOrigin()
+    const useQueue = Boolean(process.env.RABBITMQ_URL && process.env.INTERNAL_API_SECRET && internalOrigin && !process.env.DISABLE_QUEUE)
 
     // Create evaluation records and queue jobs for each file
     const evaluationPromises = files.map(async (file, index) => {
@@ -143,9 +167,13 @@ export async function POST(request: NextRequest) {
         includeTemplateValidation: templateAnalysisId ? true : false
       }
 
-      // Add to event-driven queue system
-      const priority = Math.max(1, 10 - index) // Priority 10 to 1
-      await addToQueue(QUEUES.HACKATHON_EVALUATION, job, priority)
+      if (useQueue) {
+        const priority = Math.max(1, 10 - index)
+        await addToQueue(QUEUES.HACKATHON_EVALUATION, job, priority)
+      } else {
+        const { processHackathonEvaluation } = await import('../../../../lib/processors/evaluationProcessor')
+        processHackathonEvaluation(job).catch(error => console.error('Direct hackathon processing failed:', error))
+      }
       
       return evaluation._id.toString()
     })
@@ -156,28 +184,24 @@ export async function POST(request: NextRequest) {
     hackathon.evaluations = evaluationIds
     await hackathon.save()
 
-    // Trigger bulk queue processing (event-driven)
-    const triggerUrl = new URL('/api/queue/trigger', request.url)
-    fetch(triggerUrl.toString(), {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ 
-        queueName: QUEUES.HACKATHON_EVALUATION,
-        maxJobs: Math.min(files.length, 10), // Process up to 10 at a time
-        userId: userId // Pass userId for internal auth
-      })
-    }).catch(error => {
-      console.error('Failed to trigger bulk queue processing:', error)
-    })
+    if (useQueue && internalOrigin) {
+      const triggerUrl = new URL('/api/queue/trigger', internalOrigin)
+      fetch(triggerUrl.toString(), {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-internal-api-secret': process.env.INTERNAL_API_SECRET || ''
+        },
+        body: JSON.stringify({ queueName: QUEUES.HACKATHON_EVALUATION, maxJobs: Math.min(files.length, 10) })
+      }).catch(error => console.error('Failed to trigger bulk queue processing:', error))
+    }
 
     return NextResponse.json({ 
       hackathonId: hackathon._id.toString(),
       batchId,
       totalFiles: files.length,
-      message: `${files.length} files uploaded successfully. Added to processing queue...`,
-      status: 'queued'
+      message: useQueue ? `${files.length} files uploaded successfully. Added to processing queue...` : `${files.length} files uploaded successfully. Processing started...`,
+      status: useQueue ? 'queued' : 'processing'
     })
 
   } catch (error) {

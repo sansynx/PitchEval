@@ -2,16 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { getChannel, QUEUES, getQueueStats, EvaluationJob } from '../../../../lib/queue'
 import { processEvaluationJob } from '../../../../lib/processors/evaluationProcessor'
+import { isAuthorizedOperator } from '../../../../lib/security'
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId: authUserId } = await auth()
-    const { queueName, maxJobs = 5, userId: bodyUserId } = await request.json()
+    const { sessionClaims } = await auth()
+    const { queueName, maxJobs = 5 } = await request.json()
     
     // Allow internal calls with userId in body, or external calls with auth
-    const userId = bodyUserId || authUserId
-    
-    if (!userId) {
+    if (!isAuthorizedOperator(request, sessionClaims)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -28,7 +27,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate maxJobs to prevent abuse
-    if (maxJobs > 50) {
+    if (!Number.isInteger(maxJobs) || maxJobs < 1 || maxJobs > 50) {
       return NextResponse.json({ 
         error: 'Too many jobs requested',
         message: 'Maximum 50 jobs per batch to prevent timeouts'
@@ -165,6 +164,11 @@ export async function POST(request: NextRequest) {
 // GET endpoint to check queue status
 export async function GET(request: NextRequest) {
   try {
+    const { sessionClaims } = await auth()
+    if (!isAuthorizedOperator(request, sessionClaims)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
     const { searchParams } = new URL(request.url)
     const queueName = searchParams.get('queue')
     

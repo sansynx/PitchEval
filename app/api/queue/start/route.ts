@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { queueWorker } from '../../../../lib/workers/queueWorker'
+import { auth } from '@clerk/nextjs/server'
+import { isAuthorizedOperator } from '../../../../lib/security'
 
 export async function POST(request: NextRequest) {
   try {
+    const { sessionClaims } = await auth()
+    if (!isAuthorizedOperator(request, sessionClaims)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
     if (queueWorker.isWorkerRunning()) {
       return NextResponse.json({
         success: true,

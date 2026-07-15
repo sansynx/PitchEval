@@ -33,7 +33,9 @@ export async function processPersonalEvaluation(job: PersonalEvaluationJob): Pro
 
     // Check Redis cache with context
     const cachedResult = await getCachedEvaluation(fileHash, job.domain, {
-      evaluationType: 'personal'
+      evaluationType: 'personal',
+      description: job.description,
+      userId: job.userId
     })
 
     let aiResult
@@ -68,8 +70,10 @@ export async function processPersonalEvaluation(job: PersonalEvaluationJob): Pro
         detectedDomain: aiResult.detectedDomain,
         fileName: job.fileName,
         createdAt: new Date().toISOString()
-      }, {
-        evaluationType: 'personal'
+    }, {
+      evaluationType: 'personal',
+      description: job.description,
+      userId: job.userId
       })
     }
 
@@ -81,7 +85,7 @@ export async function processPersonalEvaluation(job: PersonalEvaluationJob): Pro
       detectedDomain: aiResult.detectedDomain,
       status: 'completed',
       updatedAt: new Date(),
-    })
+    }, { runValidators: true })
 
     logger.info('Personal evaluation completed', { 
       fileName: job.fileName, 
@@ -158,7 +162,10 @@ export async function processHackathonEvaluation(job: HackathonEvaluationJob): P
       evaluationType: 'hackathon' as const,
       tracks: hackathon.tracks,
       weights: hackathon.weights,
-      hasTemplate: !!(job.templateAnalysis || hackathon.templateAnalysis)
+      hasTemplate: !!(job.templateAnalysis || hackathon.templateAnalysis),
+      templateFingerprint: job.templateAnalysis?.fingerprint,
+      templateContext: [hackathon.additionalInfo, job.templateAnalysis?.additionalContext].filter(Boolean).join('\n'),
+      userId: job.userId
     }
     
     const cachedResult = await getCachedEvaluation(fileHash, 'hackathon', cacheContext)
@@ -324,13 +331,30 @@ export async function processHackathonEvaluation(job: HackathonEvaluationJob): P
       await setCachedEvaluation(fileHash, 'hackathon', cacheData, cacheContext)
     }
 
-    // Calculate weighted overall score
+    const scoreValues = [
+      aiResult.scores.innovation,
+      aiResult.scores.feasibility,
+      aiResult.scores.impact,
+      aiResult.scores.clarity,
+      job.weights.innovation,
+      job.weights.feasibility,
+      job.weights.impact,
+      job.weights.clarity
+    ]
+    if (!scoreValues.every((value: unknown) => typeof value === 'number' && Number.isFinite(value))) {
+      throw new Error('Evaluation contained invalid scores or weights')
+    }
+
+    // Calculate weighted overall score from validated finite values.
     const weightedScore = (
       (aiResult.scores.innovation * job.weights.innovation / 100) +
       (aiResult.scores.feasibility * job.weights.feasibility / 100) +
       (aiResult.scores.impact * job.weights.impact / 100) +
       (aiResult.scores.clarity * job.weights.clarity / 100)
     )
+    if (!Number.isFinite(weightedScore) || weightedScore < 0 || weightedScore > 10) {
+      throw new Error('Evaluation produced an out-of-range weighted score')
+    }
 
     // Update evaluation with results
     const updateData: any = {
@@ -353,7 +377,7 @@ export async function processHackathonEvaluation(job: HackathonEvaluationJob): P
       updateData.templateValidation = templateValidation
     }
 
-    await Evaluation.findByIdAndUpdate(job.evaluationId, updateData)
+    await Evaluation.findByIdAndUpdate(job.evaluationId, updateData, { runValidators: true })
 
     logger.info('Hackathon evaluation completed')
 

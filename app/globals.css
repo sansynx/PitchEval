@@ -404,3 +404,13 @@ p .emoji, span .emoji, div .emoji {
   -webkit-text-fill-color: initial !important;
   color: initial !important;
 }
+
+/* Respect motion preferences while retaining the existing visual language. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

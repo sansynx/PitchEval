@@ -4,6 +4,7 @@ import dbConnect from '@/lib/mongodb'
 import Evaluation from '@/lib/models/Evaluation'
 import Hackathon from '@/lib/models/Hackathon'
 import { generateJudgeReport } from '@/lib/judgeReportGenerator'
+import { sanitizeDownloadFilename } from '@/lib/security'
 
 export async function GET(
   request: NextRequest,
@@ -39,7 +40,7 @@ export async function GET(
 
     const pdfBuffer = await generateJudgeReport(evaluation, hackathonName)
 
-    const fileName = `${evaluation.fileName.replace(/\.[^/.]+$/, '')}_Judge_Report.pdf`
+    const fileName = `${sanitizeDownloadFilename(evaluation.fileName.replace(/\.[^/.]+$/, ''), 'PitchEval')}_Judge_Report.pdf`
 
     return new NextResponse(pdfBuffer as BodyInit, {
       headers: {

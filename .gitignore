@@ -153,6 +153,9 @@ temp/
 coverage/
 .nyc_output/
 junit.xml
+test-results/
+playwright-report/
+.vitest/
 
 # Misc
 .sass-cache/

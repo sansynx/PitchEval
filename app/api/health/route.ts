@@ -1,12 +1,11 @@
 import { NextResponse } from 'next/server'
 import { initializeServices } from '../../../lib/startup'
 import { queueWorker } from '../../../lib/workers/queueWorker'
+import { auth } from '@clerk/nextjs/server'
+import { isAuthorizedOperator } from '../../../lib/security'
 
 export async function GET() {
   try {
-    // Ensure services are initialized
-    await initializeServices()
-
     // Check queue worker status
     const isWorkerRunning = queueWorker.isWorkerRunning()
 
@@ -33,8 +32,12 @@ export async function GET() {
   }
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const { sessionClaims } = await auth()
+    if (!isAuthorizedOperator(request, sessionClaims)) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
     console.log('🔄 Manual service initialization requested...')
     
     // Force re-initialization

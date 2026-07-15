@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import dbConnect from '../../../../lib/mongodb'
 import Evaluation from '../../../../lib/models/Evaluation'
 import { generatePDFReport } from '../../../../lib/reportGenerator'
+import { sanitizeDownloadFilename } from '../../../../lib/security'
 
 export async function GET(
   request: NextRequest,
@@ -33,7 +34,7 @@ export async function GET(
     return new NextResponse(pdfBuffer as BodyInit, {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `attachment; filename="${evaluation.fileName.replace(/\.[^/.]+$/, '')}_PitchEval_report.pdf"`,
+        'Content-Disposition': `attachment; filename="${sanitizeDownloadFilename(evaluation.fileName.replace(/\.[^/.]+$/, ''), 'PitchEval')}_PitchEval_report.pdf"`,
       },
     })
 

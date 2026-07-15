@@ -2,12 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import dbConnect from '../../../../lib/mongodb'
 import Evaluation from '../../../../lib/models/Evaluation'
+import { isAuthorizedOperator } from '../../../../lib/security'
 
 export async function POST(request: NextRequest) {
   try {
-    const { userId } = await auth()
+    const { userId, sessionClaims } = await auth()
 
-    if (!userId) {
+    if (!userId || !isAuthorizedOperator(request, sessionClaims)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

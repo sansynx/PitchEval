@@ -54,7 +54,7 @@ const TemplateAnalysisSchema = new mongoose.Schema({
   hackathonId: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Hackathon',
-    required: true,
+    required: false,
   },
   userId: {
     type: String,

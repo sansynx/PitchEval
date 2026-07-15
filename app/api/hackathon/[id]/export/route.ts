@@ -3,6 +3,7 @@ import { auth } from '@clerk/nextjs/server'
 import dbConnect from '../../../../../lib/mongodb'
 import Hackathon from '../../../../../lib/models/Hackathon'
 import Evaluation from '../../../../../lib/models/Evaluation'
+import { escapeCsvCell, sanitizeDownloadFilename } from '../../../../../lib/security'
 
 export async function GET(
   request: NextRequest,
@@ -94,14 +95,14 @@ export async function GET(
     const csvRows = [...rankedRows, ...discardedRows]
 
     const csvContent = [
-      csvHeaders.join(','),
-      ...csvRows.map(row => row.join(','))
+      csvHeaders.map(escapeCsvCell).join(','),
+      ...csvRows.map(row => row.map(escapeCsvCell).join(','))
     ].join('\n')
 
     return new NextResponse(csvContent, {
       headers: {
         'Content-Type': 'text/csv',
-        'Content-Disposition': `attachment; filename="${hackathon.name}_results.csv"`
+      'Content-Disposition': `attachment; filename="${sanitizeDownloadFilename(hackathon.name, 'hackathon')}_results.csv"`
       }
     })
 

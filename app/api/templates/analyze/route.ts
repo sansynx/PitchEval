@@ -1,11 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { auth } from '@clerk/nextjs/server'
 import { analyzeTemplateStructure } from '../../../../lib/ai/templateAnalysis'
+import { isValidPdfUpload, isWithinRateLimit } from '../../../../lib/security'
 
 export async function POST(request: NextRequest) {
   try {
+    const { userId } = await auth()
+    if (!userId) {
+      return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
+    }
+
+    if (!isWithinRateLimit(`template-analysis:${userId}`, 4, 5 * 60_000)) {
+      return NextResponse.json({ success: false, error: 'Too many template analysis requests. Please wait a few minutes.' }, { status: 429 })
+    }
+
     const formData = await request.formData()
     const templateFile = formData.get('templateFile') as File
-    const additionalContext = formData.get('additionalContext') as string
+    const additionalContext = (formData.get('additionalContext') as string | null) ?? ''
 
     if (!templateFile) {
       return NextResponse.json({
@@ -14,14 +25,15 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
+    if (additionalContext.length > 2000) {
+      return NextResponse.json({ success: false, error: 'Additional context must be 2,000 characters or fewer.' }, { status: 400 })
+    }
+
     // Use the enhanced validation from templateAnalysis
-    const { validateTemplateFile } = await import('../../../../lib/ai/templateAnalysis')
-    const validation = validateTemplateFile(templateFile)
-    
-    if (!validation.isValid) {
+    if (!await isValidPdfUpload(templateFile)) {
       return NextResponse.json({
         success: false,
-        error: validation.error
+        error: 'Upload a valid PDF smaller than 10MB.'
       }, { status: 400 })
     }
 

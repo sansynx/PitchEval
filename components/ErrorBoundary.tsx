@@ -34,10 +34,10 @@ class ErrorBoundary extends React.Component<
           <div className="text-center">
             <h2 className="text-xl font-bold mb-4">Something went wrong</h2>
             <button
-              onClick={() => this.setState({ hasError: false })}
-              className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600"
+              onClick={() => window.location.reload()}
+              className="px-4 py-2 bg-orange-500 text-white rounded hover:bg-orange-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300 focus-visible:ring-offset-2 focus-visible:ring-offset-black"
             >
-              Try again
+              Reload page
             </button>
           </div>
         </div>
