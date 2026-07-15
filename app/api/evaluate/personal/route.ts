@@ -66,7 +66,8 @@ export async function POST(request: NextRequest) {
 
     // Smart processing strategy: Queue first, fallback to direct
     const internalOrigin = getInternalAppOrigin()
-    const useQueue = process.env.RABBITMQ_URL && process.env.INTERNAL_API_SECRET && internalOrigin && !process.env.DISABLE_QUEUE
+    const internalSecret = process.env.INTERNAL_API_SECRET
+    const useQueue = process.env.RABBITMQ_URL && internalSecret && internalOrigin && !process.env.DISABLE_QUEUE
     
     if (useQueue && internalOrigin) {
       try {
@@ -78,7 +79,7 @@ export async function POST(request: NextRequest) {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-internal-api-secret': process.env.INTERNAL_API_SECRET
+            'x-internal-api-secret': internalSecret ?? ''
           },
           body: JSON.stringify({ 
             queueName: QUEUES.PERSONAL_EVALUATION,
