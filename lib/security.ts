@@ -28,8 +28,10 @@ export async function isValidPdfUpload(file: File | null): Promise<boolean> {
 export function hasValidWeights(weights: unknown): weights is Record<'innovation' | 'feasibility' | 'impact' | 'clarity', number> {
   if (!weights || typeof weights !== 'object') return false
   const values = ['innovation', 'feasibility', 'impact', 'clarity'].map(key => (weights as Record<string, unknown>)[key])
-  return values.every(value => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100) &&
-    values.reduce((total, value) => total + (value as number), 0) === 100
+  if (!values.every((value): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100)) {
+    return false
+  }
+  return values.reduce((total, value) => total + value, 0) === 100
 }
 
 export function sanitizeDownloadFilename(value: string, fallback = 'download'): string {
